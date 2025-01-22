@@ -138,12 +138,12 @@ class ObjectMonitor { /* 对象监视器 --用于实现线程间的互斥与同�
   // initialize the monitor, exception the semaphore, all other fields
   // are simple integers or pointers
   ObjectMonitor() {
-    _header       = NULL; //对象头  markOop
+    _header       = NULL; /* 管理的对象头 markOop */
     _count        = 0;  
     _waiters      = 0,   
     _recursions   = 0;   // 锁的重入次数 
     _object       = NULL; // 存储锁对象
-    _owner        = NULL;  // 标识拥有该monitor的线程（获取锁的线程） 
+    _owner        = NULL;  /* 标识拥有该monitor的线程（获取锁的线程） */
     _WaitSet      = NULL;  // 等待线程（调用wait）组成的双向循环链表，_WaitSet是第一个节点
     _WaitSetLock  = 0 ;    
     _Responsible  = NULL ;
