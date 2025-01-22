@@ -97,7 +97,7 @@ Address MacroAssembler::as_Address(AddressLiteral adr) {
 Address MacroAssembler::as_Address(ArrayAddress adr) {
   return Address::make_array(adr);
 }
-
+/* 偏向锁加锁入口 */
 int MacroAssembler::biased_locking_enter(Register lock_reg,
                                          Register obj_reg,
                                          Register swap_reg,
@@ -141,12 +141,12 @@ int MacroAssembler::biased_locking_enter(Register lock_reg,
     push(tmp_reg);
   }
   movl(tmp_reg, swap_reg);
-  andl(tmp_reg, markOopDesc::biased_lock_mask_in_place);
-  cmpl(tmp_reg, markOopDesc::biased_lock_pattern);
+  andl(tmp_reg, markOopDesc::biased_lock_mask_in_place);/*这里是取markword的后三位到tmp_reg寄存器中*/ //biased_lock_mask_in_place=111
+  cmpl(tmp_reg, markOopDesc::biased_lock_pattern); /* biased_lock_pattern=101 */
   if (need_tmp_reg) {
     pop(tmp_reg);
   }
-  jcc(Assembler::notEqual, cas_label);
+  jcc(Assembler::notEqual, cas_label);/*1、锁对象markword后三位不是101，表示没有开启对象偏向模式(即已经是轻量级锁)则跳到cas_label标签到方法末尾*/
   // The bias pattern is present in the object's header. Need to check
   // whether the bias owner and the epoch are both still current.
   // Note that because there is no current thread register on x86 we
@@ -154,12 +154,13 @@ int MacroAssembler::biased_locking_enter(Register lock_reg,
   // avoid reloading it and needing to recheck invariants below. This
   // store is unfortunate but it makes the overall code shorter and
   // simpler.
+    /* 锁对象markword后三位是101,即现在对象是偏向锁模式(但不一定持有偏向锁) */
   movl(saved_mark_addr, swap_reg);
   if (need_tmp_reg) {
     push(tmp_reg);
   }
-  get_thread(tmp_reg);
-  xorl(swap_reg, tmp_reg);
+  get_thread(tmp_reg); /* 线程id */
+  xorl(swap_reg, tmp_reg); /* 线程id与锁对象markword的偏向锁线程id异或，结果等于0说明是偏向的就是自己，加锁成功 */
   if (swap_reg_contains_mark) {
     null_check_offset = offset();
   }
@@ -173,7 +174,7 @@ int MacroAssembler::biased_locking_enter(Register lock_reg,
     cond_inc32(Assembler::zero,
                ExternalAddress((address)counters->biased_lock_entry_count_addr()));
   }
-  jcc(Assembler::equal, done);
+  jcc(Assembler::equal, done); /* 3、线程id与锁对象markword的偏向锁线程id异或，结果等于0说明是偏向的就是自己，加锁成功 */
 
   Label try_revoke_bias;
   Label try_rebias;
@@ -187,8 +188,8 @@ int MacroAssembler::biased_locking_enter(Register lock_reg,
   // If the low three bits in the xor result aren't clear, that means
   // the prototype header is no longer biased and we have to revoke
   // the bias on this object.
-  testl(swap_reg, markOopDesc::biased_lock_mask_in_place);
-  jcc(Assembler::notZero, try_revoke_bias);
+  testl(swap_reg, markOopDesc::biased_lock_mask_in_place);//biased_lock_mask_in_place==111
+  jcc(Assembler::notZero, try_revoke_bias);//锁对象Kclass不是偏向模式，则撤销锁对象的偏向模式
 
   // Biasing is still enabled for this data type. See whether the
   // epoch of the current bias is still valid, meaning that the epoch
@@ -209,17 +210,17 @@ int MacroAssembler::biased_locking_enter(Register lock_reg,
   // Note that we first construct the presumed unbiased header so we
   // don't accidentally blow away another thread's valid bias.
   movl(swap_reg, saved_mark_addr);
-  andl(swap_reg,
+  andl(swap_reg,/* 构造新的markword */
        markOopDesc::biased_lock_mask_in_place | markOopDesc::age_mask_in_place | markOopDesc::epoch_mask_in_place);
   if (need_tmp_reg) {
     push(tmp_reg);
   }
   get_thread(tmp_reg);
-  orl(tmp_reg, swap_reg);
+  orl(tmp_reg, swap_reg);/* 将线程id加到新的markword */
   if (os::is_MP()) {
     lock();
-  }
-  cmpxchgptr(tmp_reg, Address(obj_reg, 0));
+  }                   //Address(obj_reg, 0)==锁对象的markword地址
+  cmpxchgptr(tmp_reg, Address(obj_reg, 0)); /* 4、CAS替换锁对象的markword */
   if (need_tmp_reg) {
     pop(tmp_reg);
   }
@@ -232,9 +233,9 @@ int MacroAssembler::biased_locking_enter(Register lock_reg,
                ExternalAddress((address)counters->anonymously_biased_lock_entry_count_addr()));
   }
   if (slow_case != NULL) {
-    jcc(Assembler::notZero, *slow_case);
+    jcc(Assembler::notZero, *slow_case);/* 4、CAS替换锁对象的markword，加锁失败，表示有多个线程在CAS操作，执行偏向锁撤销升级逻辑 */
   }
-  jmp(done);
+  jmp(done);/* 4、CAS替换锁对象的markword，偏向锁加锁成功 */
 
   bind(try_rebias);
   // At this point we know the epoch has expired, meaning that the
@@ -272,6 +273,8 @@ int MacroAssembler::biased_locking_enter(Register lock_reg,
   }
   jmp(done);
 
+    //撤销偏向，将对象markword重置为klass(类)的markword
+    //这里只有判断类的markword不是偏向标记才会进入，所以会将对象的markword重置为非偏向标记
   bind(try_revoke_bias);
   // The prototype mark in the klass doesn't have the bias bit set any
   // more, indicating that objects of this data type are not supposed
@@ -292,7 +295,7 @@ int MacroAssembler::biased_locking_enter(Register lock_reg,
   movl(tmp_reg, Address(tmp_reg, Klass::prototype_header_offset()));
   if (os::is_MP()) {
     lock();
-  }
+  } //用对象klass的markword CAS替换对象的markword
   cmpxchgptr(tmp_reg, Address(obj_reg, 0));
   if (need_tmp_reg) {
     pop(tmp_reg);

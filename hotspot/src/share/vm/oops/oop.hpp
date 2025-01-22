@@ -56,11 +56,11 @@ class CMSIsAliveClosure;
 class PSPromotionManager;
 class ParCompactionManager;
 
-class oopDesc {
+class oopDesc { /* 对象头 */
   friend class VMStructs;
  private:
-  volatile markOop  _mark;
-  union _metadata {
+  volatile markOop  _mark; /* 对象头markword - 8字节 - 用于存储对象的哈希码、GC年龄、锁状态等信息 */
+  union _metadata {        /* 类元数据指针 - Klass对象指针 - 4个字节 */
     Klass*      _klass;
     narrowKlass _compressed_klass;
   } _metadata;

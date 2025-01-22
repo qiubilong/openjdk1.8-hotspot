@@ -3593,7 +3593,7 @@ void TemplateTable::athrow() {
 // [frame data   ] <--- monitor block bot
 // ...
 // [saved rbp    ] <--- rbp
-void TemplateTable::monitorenter() {
+void TemplateTable::monitorenter() { /* 真正的monitorenter入口，汇编实现，window系统x86_64 */
   transition(atos, vtos);
 
   // check for NULL object
@@ -3606,10 +3606,10 @@ void TemplateTable::monitorenter() {
   const int entry_size = frame::interpreter_frame_monitor_size() * wordSize;
 
   Label allocated;
-
-  // initialize entry pointer
-  __ xorl(c_rarg1, c_rarg1); // points to free slot or NULL
-
+    /*   栈帧中存在一个monitor数组用于保存锁相关信息,又叫lockRecord(后面都统称为lockRecord) */
+    // initialize entry pointer
+    __ xorl(c_rarg1, c_rarg1); // points to free slot or NULL
+    /*   下面的循环从lockRecord数组中找到一个空的槽位,如果没有就新申请一个 */
   // find a free slot in the monitor block (result in c_rarg1)
   {
     Label entry, loop, exit;
@@ -3672,10 +3672,10 @@ void TemplateTable::monitorenter() {
   // The object has already been poped from the stack, so the
   // expression stack looks correct.
   __ increment(r13);
-
+   /* 保存对象到lockRecord中,lockRecord对象有两个属性分别是对象指针和锁,然后执行加锁逻辑 */
   // store object
   __ movptr(Address(c_rarg1, BasicObjectLock::obj_offset_in_bytes()), rax);
-  __ lock_object(c_rarg1);
+  __ lock_object(c_rarg1); /* monitorenter - 加锁逻辑 */ // interp_masm_x86_64.cpp中 InterpreterMacroAssembler::lock_object(Register lock_reg)
 
   // check to make sure this monitor doesn't cause stack overflow after locking
   __ save_bcp();  // in case of exception

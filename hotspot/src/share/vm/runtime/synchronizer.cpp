@@ -1,4 +1,4 @@
-/*
+/**
  * Copyright (c) 1998, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
@@ -164,7 +164,7 @@ static volatile int MonitorPopulation = 0 ;      // # Extant -- in circulation
 // extremely sensitive to race condition. Be careful.
 
 /*
-偏向锁的获取由BiasedLocking::revoke_and_rebias方法实现
+偏向锁的获取由BiasedLocking::revoke_and_rebias 方法实现
 1、通过markOop mark = obj->mark()获取对象的markOop数据mark，即对象头的Mark Word；
 2、判断mark是否为可偏向状态，即mark的偏向锁标志位为 1，锁标志位为 01；
 3、判断mark中JavaThread的状态：如果为空，则进入步骤（4）；
@@ -184,7 +184,7 @@ jdk1.6之后默认开启偏向锁
 开启偏向锁：-XX:+UseBiasedLocking -XX:BiasedLockingStartupDelay=0(默认有延迟，关闭延迟)
 关闭偏向锁 XX:-UseBiasedLocking
 */
-
+                                   // obj = Thread + object锁对象
 void ObjectSynchronizer::fast_enter(Handle obj, BasicLock* lock, bool attempt_rebias, TRAPS) {
 	//判断是否开启偏向锁
  if (UseBiasedLocking) {
@@ -198,12 +198,12 @@ void ObjectSynchronizer::fast_enter(Handle obj, BasicLock* lock, bool attempt_re
       }
     } else {
       assert(!attempt_rebias, "can not rebias toward VM thread");
-	  // 偏向锁的撤销   只有当其它线程尝试竞争偏向锁时，持有偏向锁的线程才会释放锁
+	  /* 偏向锁的撤销*/   //只有当其它线程尝试竞争偏向锁时，持有偏向锁的线程才会释放锁
       BiasedLocking::revoke_at_safepoint(obj);
     }
     assert(!obj->mark()->has_bias_pattern(), "biases should be revoked by now");
  }
-// 获取轻量级锁  当关闭偏向锁功能，或多个线程竞争偏向锁导致偏向锁升级为轻量级锁
+  /* 获取轻量级锁  当关闭偏向锁功能，或多个线程竞争偏向锁导致偏向锁升级为轻量级锁 */
  slow_enter (obj, lock, THREAD) ;
 }
 
@@ -256,20 +256,19 @@ void ObjectSynchronizer::slow_enter(Handle obj, BasicLock* lock, TRAPS) {
   markOop mark = obj->mark();
   assert(!mark->has_bias_pattern(), "should not see bias pattern here");
   //判断mark是否为无锁状态：mark的偏向锁标志位为 0，锁标志位为 01；
-  if (mark->is_neutral()) {
+  if (mark->is_neutral()) {/* 无锁状态 001*/
     // Anticipate successful CAS -- the ST of the displaced mark must
     // be visible <= the ST performed by the CAS.
 	//把mark保存到BasicLock对象的_displaced_header字段
     lock->set_displaced_header(mark);
 	//通过CAS尝试将Mark Word更新为指向BasicLock对象的指针，如果更新成功，表示竞争到锁，则执行同步代码
     // Atomic::cmpxchg_ptr原子操作保证只有一个线程可以把指向栈帧的指针复制到Mark Word
-	if (mark == (markOop) Atomic::cmpxchg_ptr(lock, obj()->mark_addr(), mark)) {
+	if (mark == (markOop) Atomic::cmpxchg_ptr(lock, obj()->mark_addr(), mark)) {/* markword锁指针指向lockRecord */
       TEVENT (slow_enter: release stacklock) ;
       return ;
     }
     // Fall through to inflate() ...
-  } else   //如果当前mark处于加锁状态，且mark中的ptr指针指向当前线程的栈帧，表示为重入操作，不需要竞争锁
-  if (mark->has_locker() && THREAD->is_lock_owned((address)mark->locker())) {
+  } else if (mark->has_locker() && THREAD->is_lock_owned((address)mark->locker())) {/* 如果当前mark处于加锁状态，且mark中的ptr指针指向当前线程的栈帧，表示为重入操作，不需要竞争锁*/
     assert(lock != mark->locker(), "must not re-lock the same lock");
     assert(lock != (BasicLock*)obj->mark(), "don't relock with same BasicLock");
     lock->set_displaced_header(NULL);
@@ -283,14 +282,14 @@ void ObjectSynchronizer::slow_enter(Handle obj, BasicLock* lock, TRAPS) {
     return ;
   }
 #endif
-
+   /* 轻量级锁加锁不成功，执行重量级锁加锁流程 */
   // The object header will never be displaced to this lock,
   // so it does not matter what the value is, except that it
   // must be non-zero to avoid looking like a re-entrant lock,
   // and must not look locked either.
   // 这时候需要膨胀为重量级锁，膨胀前，设置Displaced Mark Word为一个特殊值，代表该锁正在用一个重量级锁的monitor
   lock->set_displaced_header(markOopDesc::unused_mark());
-  // 锁膨胀的过程，该方法返回一个ObjectMonitor对象，然后调用其enter方法
+  /* 锁膨胀的过程，该方法返回一个ObjectMonitor对象，然后调用其enter方法 */
   ObjectSynchronizer::inflate(2, obj())->enter(THREAD);
 }
 
@@ -1232,7 +1231,7 @@ ObjectMonitor* ObjectSynchronizer::inflate_helper(oop obj) {
 
 // 锁膨胀过程  膨胀完成返回monitor时，并不表示该线程竞争到了锁，
 //真正的锁竞争发生在ObjectMonitor::enter方法中
-ObjectMonitor * ATTR ObjectSynchronizer::inflate (Thread * Self, oop object) {
+ObjectMonitor * ATTR ObjectSynchronizer::inflate (Thread * Self, oop object) { /* 膨胀为重量级锁，返回 ObjectMonitor */
   // Inflate mutates the heap ...
   // Relaxing assertion for bug 6320749.
   assert (Universe::verify_in_progress() ||
@@ -1257,8 +1256,8 @@ ObjectMonitor * ATTR ObjectSynchronizer::inflate (Thread * Self, oop object) {
 
 
       // CASE: inflated
-	  // 判断当前是否为重量级锁状态，即Mark Word的锁标识位为 10，如果已经是重量级锁状态直接返回
-      if (mark->has_monitor()) {
+	  /* 判断当前是否为重量级锁状态，即Mark Word的锁标识位为 10，如果已经是重量级锁状态直接返回 */
+      if (mark->has_monitor()) {/* 1、锁状态 = 10 = 重量级锁 */
 		  //获取指向ObjectMonitor的指针，并返回，膨胀过程已经完成
           ObjectMonitor * inf = mark->monitor() ;
           assert (inf->header()->is_neutral(), "invariant");
@@ -1279,7 +1278,7 @@ ObjectMonitor * ATTR ObjectSynchronizer::inflate (Thread * Self, oop object) {
 	  但不会一直占用cpu资源，每隔一段时间会通过os::NakedYield方法放弃cpu资源，
 	  或通过park方法挂起；如果其他线程完成锁的膨胀操作，则退出自旋并返回
 	  */
-	  if (mark == markOopDesc::INFLATING()) {
+	  if (mark == markOopDesc::INFLATING()) {/* 2、锁状态  = 轻量级锁膨胀中  --> 等待膨胀完成 */
 		
          TEVENT (Inflate: spin while INFLATING) ;
 		  // 检查是否处于膨胀中状态（其他线程正在膨胀中），
@@ -1317,7 +1316,7 @@ ObjectMonitor * ATTR ObjectSynchronizer::inflate (Thread * Self, oop object) {
 		3、如果CAS成功，设置monitor的各个字段：_header、_owner和_object等，并返回
 	  */
 	  //
-      if (mark->has_locker()) {
+      if (mark->has_locker()) {/* 3、锁状态 = 00 = 轻量级锁 */
 		  // 当前轻量级锁状态，创建ObjectMonitor对象，并初始化
           ObjectMonitor * m = omAlloc (Self) ;
           // Optimistically prepare the objectmonitor - anticipate successful CAS
@@ -1328,7 +1327,7 @@ ObjectMonitor * ATTR ObjectSynchronizer::inflate (Thread * Self, oop object) {
           m->OwnerIsThread = 0 ;
           m->_recursions   = 0 ;
           m->_SpinDuration = ObjectMonitor::Knob_SpinLimit ;   // Consider: maintain by type/class
-		  // 设置状态为膨胀中
+		  /* CAS竞争设置markword锁状态为膨胀中 */
           markOop cmp = (markOop) Atomic::cmpxchg_ptr (markOopDesc::INFLATING(), object->mark_addr(), mark) ;
           if (cmp != mark) {  //CAS失败，说明冲突了，自旋等待
              omRelease (Self, m, true) ;  //释放monitor
@@ -1369,7 +1368,7 @@ ObjectMonitor * ATTR ObjectSynchronizer::inflate (Thread * Self, oop object) {
           assert (dmw->is_neutral(), "invariant") ;
 
           // Setup monitor fields to proper values -- prepare the monitor
-		//CAS成功，设置ObjectMonitor的_header、_owner和_object等
+		  //CAS成功，设置ObjectMonitor的_header、_owner和_object等
           m->set_header(dmw) ;
 
           // Optimization: if the mark->locker stack address is associated
@@ -1412,7 +1411,7 @@ ObjectMonitor * ATTR ObjectSynchronizer::inflate (Thread * Self, oop object) {
       // An inflateTry() method that we could call from fast_enter() and slow_enter()
       // would be useful.
 
-	  // 如果是无锁状态
+	  /* 3、无锁状态 */
       assert (mark->is_neutral(), "invariant");	  
 	  // 创建ObjectMonitor对象，并初始化
       ObjectMonitor * m = omAlloc (Self) ;

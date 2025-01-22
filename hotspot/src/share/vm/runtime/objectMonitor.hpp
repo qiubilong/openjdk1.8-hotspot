@@ -74,7 +74,7 @@ class EventJavaMonitorWait;
 // It is also used as RawMonitor by the JVMTI
 
 
-class ObjectMonitor {
+class ObjectMonitor { /* 对象监视器 --用于实现线程间的互斥与同步 */
  public:
   enum {
     OM_OK,                    // no error

@@ -32,7 +32,7 @@
 class BasicLock VALUE_OBJ_CLASS_SPEC {
   friend class VMStructs;
  private:
-  volatile markOop _displaced_header;
+  volatile markOop _displaced_header; /* 锁对象的markword */
  public:
   markOop      displaced_header() const               { return _displaced_header; }
   void         set_displaced_header(markOop header)   { _displaced_header = header; }
@@ -57,8 +57,8 @@ class BasicLock VALUE_OBJ_CLASS_SPEC {
 class BasicObjectLock VALUE_OBJ_CLASS_SPEC {
   friend class VMStructs;
  private:
-  BasicLock _lock;                                    // the lock, must be double word aligned
-  oop       _obj;                                     // object holds the lock;
+  BasicLock _lock;   /* 锁对象头markword */                                 // the lock, must be double word aligned
+  oop       _obj;    /* 拥有锁的对象 */                                 // object holds the lock;
 
  public:
   // Manipulation

@@ -675,7 +675,7 @@ void InterpreterMacroAssembler::remove_activation(
 }
 
 #endif // C_INTERP
-
+/* monitorenter入口  */
 // Lock object
 //
 // Args:
@@ -685,7 +685,7 @@ void InterpreterMacroAssembler::remove_activation(
 //      rax
 //      c_rarg0, c_rarg1, c_rarg2, c_rarg3, .. (param regs)
 //      rscratch1, rscratch2 (scratch regs)
-void InterpreterMacroAssembler::lock_object(Register lock_reg) {
+void InterpreterMacroAssembler::lock_object(Register lock_reg) { /* templateTable_x86_64.cpp中TemplateTable::monitorenter()调用 */
   assert(lock_reg == c_rarg1, "The argument is only for looks. It must be c_rarg1");
 
   if (UseHeavyMonitors) {
@@ -708,8 +708,8 @@ void InterpreterMacroAssembler::lock_object(Register lock_reg) {
     // Load object pointer into obj_reg %c_rarg3
     movptr(obj_reg, Address(lock_reg, obj_offset));
 
-    if (UseBiasedLocking) {
-      biased_locking_enter(lock_reg, obj_reg, swap_reg, rscratch1, false, done, &slow_case);
+    if (UseBiasedLocking) {/* monitorenter  - 尝试偏向锁加锁 */
+      biased_locking_enter(lock_reg, obj_reg, swap_reg, rscratch1, false, done, &slow_case);/* macroAssembler_x86.cpp中 MacroAssembler::biased_locking_enter */
     }
 
     // Load immediate 1 into swap_reg %rax
@@ -753,14 +753,14 @@ void InterpreterMacroAssembler::lock_object(Register lock_reg) {
     }
     jcc(Assembler::zero, done);
 
-    bind(slow_case);
+    bind(slow_case);/* 慢路径就是InterpreterRuntime::monitorenter */
 
     // Call the runtime routine for slow case
     call_VM(noreg,
-            CAST_FROM_FN_PTR(address, InterpreterRuntime::monitorenter),
+            CAST_FROM_FN_PTR(address, InterpreterRuntime::monitorenter),/* 偏向锁获取失败，需要撤销偏向锁或锁升级竞争锁 */
             lock_reg);
 
-    bind(done);
+    bind(done);/* 加锁成功 */
   }
 }
 
@@ -802,7 +802,7 @@ void InterpreterMacroAssembler::unlock_object(Register lock_reg) {
     // Free entry
     movptr(Address(lock_reg, BasicObjectLock::obj_offset_in_bytes()), (int32_t)NULL_WORD);
 
-    if (UseBiasedLocking) {
+    if (UseBiasedLocking) {/* monitorenter  - 偏向锁释放锁 */
       biased_locking_exit(obj_reg, header_reg, done);
     }
 

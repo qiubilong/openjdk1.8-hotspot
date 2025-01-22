@@ -556,12 +556,12 @@ IRT_END
 // The interpreter's synchronization code is factored out so that it can
 // be shared by method invocation and synchronized blocks.
 //%note synchronization_3
-
+/* 偏向锁加锁失败 --> 需要撤销偏向锁或锁升级 */
 //%note monitor_1
 // JavaThread thread指向java中的当前线程
 // BasicObjectLock类型的elem对象包含一个BasicLock类型_lock对象和一个指向Object对象的指针_obj
 // BasicLock类型_lock对象主要用来保存_obj指向Object对象的对象头数据
-IRT_ENTRY_NO_ASYNC(void, InterpreterRuntime::monitorenter(JavaThread* thread, BasicObjectLock* elem))
+IRT_ENTRY_NO_ASYNC(void, InterpreterRuntime::monitorenter(JavaThread* thread, BasicObjectLock* elem)) //interp_masm_x86_64.cpp中 InterpreterMacroAssembler::lock_object调用
 #ifdef ASSERT
   thread->last_frame().interpreter_frame_verify_monitor(elem);
 #endif
@@ -571,13 +571,12 @@ IRT_ENTRY_NO_ASYNC(void, InterpreterRuntime::monitorenter(JavaThread* thread, Ba
   Handle h_obj(thread, elem->obj());
   assert(Universe::heap()->is_in_reserved_or_null(h_obj()),
          "must be NULL or an object");
-// UseBiasedLocking标识虚拟机是否开启偏向锁功能，如果开启则执行fast_enter逻辑，否则执行slow_enter		 
+  /* UseBiasedLocking标识虚拟机是否开启偏向锁功能，如果开启则执行fast_enter逻辑，否则执行slow_enter */
   if (UseBiasedLocking) {
     // Retry fast entry if bias is revoked to avoid unnecessary inflation
-	// 偏向锁
+	/* 尝试撤销偏向锁后加锁  */
     ObjectSynchronizer::fast_enter(h_obj, elem->lock(), true, CHECK);
   } else {
-	// 轻量级锁
     ObjectSynchronizer::slow_enter(h_obj, elem->lock(), CHECK);
   }
   assert(Universe::heap()->is_in_reserved_or_null(elem->obj()),

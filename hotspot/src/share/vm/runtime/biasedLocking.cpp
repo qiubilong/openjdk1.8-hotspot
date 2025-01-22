@@ -527,7 +527,7 @@ public:
   }
 };
 
-
+/* 撤销偏向锁 */
 BiasedLocking::Condition BiasedLocking::revoke_and_rebias(Handle obj, bool attempt_rebias, TRAPS) {
   assert(!SafepointSynchronize::is_at_safepoint(), "must not be called while at safepoint");
 
@@ -537,7 +537,7 @@ BiasedLocking::Condition BiasedLocking::revoke_and_rebias(Handle obj, bool attem
   // revocations (which are expensive) to occur.
   //  获取对象头的markword
   markOop mark = obj->mark();
-  //是否是可偏向状态(后三位是否为 1 01) 且 Thread ID 为 null 且 attempt_rebias 为 false(如锁对象的hashcode方法被调用)，需要撤销偏向锁
+  //是否是可偏向状态(后三位是否为 101) 且 Thread ID 为 null 且 attempt_rebias 为 false(如锁对象的hashcode方法被调用)，需要撤销偏向锁
   if (mark->is_biased_anonymously() && !attempt_rebias) {
     // We are probably trying to revoke the bias of this object due to
     // an identity hash code computation. Try to revoke the bias
@@ -554,7 +554,7 @@ BiasedLocking::Condition BiasedLocking::revoke_and_rebias(Handle obj, bool attem
     if (res_mark == biased_value) {
       return BIAS_REVOKED;
     }
-  } else if (mark->has_bias_pattern()) { // 是否是可偏向状态(后三位是否为 1 01)
+  } else if (mark->has_bias_pattern()) { /* markword后三位 = 101 --> 偏向锁状态  */
     Klass* k = obj->klass();
     markOop prototype_header = k->prototype_header();	
 	 // 已经有线程对对象做了锁定,需要撤销偏向锁
@@ -577,13 +577,13 @@ BiasedLocking::Condition BiasedLocking::revoke_and_rebias(Handle obj, bool attem
       // heuristics. This is normally done in the assembly code but we
       // can reach this point due to various points in the runtime
       // needing to revoke biases.
-      if (attempt_rebias) {
+      if (attempt_rebias) { /* 撤销偏向锁并且尝试获取偏向锁 */
         assert(THREAD->is_Java_thread(), "");
-        markOop biased_value       = mark;
+        markOop biased_value       = mark;        /* 构建新的 markword ==   线程id      +   对象年龄      +  偏向epoch        */
         markOop rebiased_prototype = markOopDesc::encode((JavaThread*) THREAD, mark->age(), prototype_header->bias_epoch());
         markOop res_mark = (markOop) Atomic::cmpxchg_ptr(rebiased_prototype, obj->mark_addr(), mark);
         if (res_mark == biased_value) {
-          return BIAS_REVOKED_AND_REBIASED;
+          return BIAS_REVOKED_AND_REBIASED; /* 偏向锁获取成功 */
         }
       } else {    // 不允许获取偏向锁，撤销锁
         markOop biased_value       = mark;

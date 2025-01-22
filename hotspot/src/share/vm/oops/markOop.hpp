@@ -130,7 +130,7 @@ class markOopDesc: public oopDesc {
   enum { lock_mask                = right_n_bits(lock_bits),
          lock_mask_in_place       = lock_mask << lock_shift,
          biased_lock_mask         = right_n_bits(lock_bits + biased_lock_bits),
-         biased_lock_mask_in_place= biased_lock_mask << lock_shift,
+         biased_lock_mask_in_place= biased_lock_mask << lock_shift, /* biased_lock_mask_in_place=111 */
          biased_lock_bit_in_place = 1 << biased_lock_shift,
          age_mask                 = right_n_bits(age_bits),
          age_mask_in_place        = age_mask << age_shift,
@@ -155,7 +155,7 @@ class markOopDesc: public oopDesc {
                             (address_word)hash_mask << hash_shift;
 #endif
 
-  enum { locked_value             = 0,    //00 轻量级锁 
+  enum { locked_value             = 0,   //00 轻量级锁
          unlocked_value           = 1,   //001 无锁
          monitor_value            = 2,   //10 监视器锁，也叫膨胀锁，也叫重量级锁
          marked_value             = 3,   //11 GC标记

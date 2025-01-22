@@ -1681,9 +1681,7 @@ run:
           UPDATE_PC_AND_CONTINUE(1);
       }
 
-      /* monitorenter and monitorexit for locking/unlocking an object */
-	  // 加锁 monitorenter的入口
-      CASE(_monitorenter): {
+      CASE(_monitorenter): {//没有看到偏向锁加锁逻辑，不是真正的加锁入口
 		// lockee 就是锁对象
         oop lockee = STACK_OBJECT(-1);
         // derefing's lockee ought to provoke implicit null check
@@ -1706,9 +1704,9 @@ run:
           entry->set_obj(lockee);
           markOop displaced = lockee->mark()->set_unlocked();
           entry->lock()->set_displaced_header(displaced);
-          if (Atomic::cmpxchg_ptr(entry, lockee->mark_addr(), displaced) != displaced) {
+          if (Atomic::cmpxchg_ptr(entry, lockee->mark_addr(), displaced) != displaced) {//锁对象指向锁记录
             // Is it simple recursive case?
-            if (THREAD->is_lock_owned((address) displaced->clear_lock_bits())) {
+            if (THREAD->is_lock_owned((address) displaced->clear_lock_bits())) {//轻量级锁重入
               entry->lock()->set_displaced_header(NULL);
             } else {
 			  // 偏向锁，轻量级锁加锁逻辑	
