@@ -3843,7 +3843,7 @@ int os::sleep(Thread* thread, jlong millis, bool interruptible) {
         jt->set_suspend_equivalent();
         // cleared by handle_special_suspend_equivalent_condition() or
         // java_suspend_self() via check_and_wait_while_suspended()
-        //底层调用pthread_cond_timedwait实现  既可以阻塞在某个条件变量上，也可以设置超时时间
+        /* 底层调用pthread_cond_timedwait实现  既可以阻塞在某个条件变量上，也可以设置超时时间 */
         slp->park(millis);
 
         // were we externally suspended while we were waiting?
@@ -3872,7 +3872,7 @@ int os::sleep(Thread* thread, jlong millis, bool interruptible) {
       if(millis <= 0) break ;
 
       prevtime = newtime;
-      //底层调用pthread_cond_timedwait实现
+      /* 底层调用pthread_cond_timedwait实现 */
       slp->park(millis);
     }
     return OS_OK ;
@@ -3897,7 +3897,7 @@ bool os::dont_yield() {
 }
 
 void os::yield() {
-//sched_yield是linux kernel提供的API,它会使调用线程放弃CPU使用权，加入到同等优先级队列的末尾；
+/* sched_yield是linux kernel提供的API,它会使调用线程放弃CPU使用权，加入到同等优先级队列的末尾； */
 //如果调用线程是优先级最高的唯一线程，yield方法返回后，调用线程会继续运行； 
 //因此可以知道，对于和调用线程相同或更高优先级的线程来说，yield方法会给予了它们一次运行的机会；
   sched_yield();

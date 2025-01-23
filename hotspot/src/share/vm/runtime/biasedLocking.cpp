@@ -535,10 +535,10 @@ BiasedLocking::Condition BiasedLocking::revoke_and_rebias(Handle obj, bool attem
   // efficiently enough that we should not cause these revocations to
   // update the heuristics because doing so may cause unwanted bulk
   // revocations (which are expensive) to occur.
-  //  获取对象头的markword
+  /* 获取对象头的markword */
   markOop mark = obj->mark();
   //是否是可偏向状态(后三位是否为 101) 且 Thread ID 为 null 且 attempt_rebias 为 false(如锁对象的hashcode方法被调用)，需要撤销偏向锁
-  if (mark->is_biased_anonymously() && !attempt_rebias) {
+  if (mark->is_biased_anonymously() && !attempt_rebias) {/* 1、匿名偏向时，调用hashcode() */
     // We are probably trying to revoke the bias of this object due to
     // an identity hash code computation. Try to revoke the bias
     // without a safepoint. This is possible if we can successfully
@@ -558,7 +558,7 @@ BiasedLocking::Condition BiasedLocking::revoke_and_rebias(Handle obj, bool attem
     Klass* k = obj->klass();
     markOop prototype_header = k->prototype_header();	
 	 // 已经有线程对对象做了锁定,需要撤销偏向锁
-    if (!prototype_header->has_bias_pattern()) {
+    if (!prototype_header->has_bias_pattern()) {/* 2、偏向锁已经不可用 */
       // This object has a stale bias from before the bulk revocation
       // for this data type occurred. It's pointless to update the
       // heuristics at this point so simply update the header with a
@@ -569,7 +569,7 @@ BiasedLocking::Condition BiasedLocking::revoke_and_rebias(Handle obj, bool attem
       markOop res_mark = (markOop) Atomic::cmpxchg_ptr(prototype_header, obj->mark_addr(), mark);
       assert(!(*(obj->mark_addr()))->has_bias_pattern(), "even if we raced, should still be revoked");
       return BIAS_REVOKED;
-    } else if (prototype_header->bias_epoch() != mark->bias_epoch()) {  // epoch 不相等,说明重偏向过,已过期,需要撤销偏向锁
+    } else if (prototype_header->bias_epoch() != mark->bias_epoch()) {  /* 3、epoch 不相等,说明重偏向过而且已过期,撤销偏向锁或者重偏向 */  //每撤销重偏向锁20次，class的epoch就会+1，而且会同步更新处于加锁状态的锁对象
       // The epoch of this biasing has expired indicating that the
       // object is effectively unbiased. Depending on whether we need
       // to rebias or revoke the bias of this object we can do it
@@ -577,7 +577,7 @@ BiasedLocking::Condition BiasedLocking::revoke_and_rebias(Handle obj, bool attem
       // heuristics. This is normally done in the assembly code but we
       // can reach this point due to various points in the runtime
       // needing to revoke biases.
-      if (attempt_rebias) { /* 撤销偏向锁并且尝试获取偏向锁 */
+      if (attempt_rebias) { /* 尝试重偏向其他线程 */
         assert(THREAD->is_Java_thread(), "");
         markOop biased_value       = mark;        /* 构建新的 markword ==   线程id      +   对象年龄      +  偏向epoch        */
         markOop rebiased_prototype = markOopDesc::encode((JavaThread*) THREAD, mark->age(), prototype_header->bias_epoch());
